@@ -4,6 +4,7 @@ import numpy as np
 from scipy.stats import semicircular, chi
 from .ssp import SSP
 from .util import make_good_unitary, conjugate_symmetry, vecs_from_phases
+from scipy.fft import fft, ifft
 
 def k_to_vector(K):
     fs = vecs_from_phases(K.T).T
@@ -12,7 +13,19 @@ def k_to_vector(K):
 
 
 class DiscreteSPSpace:
-    def __init__(self, keys, ssp_dim, optimal_phis=False):
+    '''
+    ds = DiscreteSPSpace(keys, ssp_dim, orthog_tol=None, optimal_phis=False)
+
+    Creates a discrete set of SPs.
+
+    Inputs:
+     keys          list of labels
+     ssp_dim       integer, dimension of vector space
+     orthog_tol    None or scalar, returns nearly orthogonal vectors so that
+                   the avg of the cross-similarity terms is less than orthog_tol
+     optimal_phis  Bool
+    '''
+    def __init__(self, keys, ssp_dim, orthog_tol=None, optimal_phis=False):
         self.ssp_dim = ssp_dim 
         self.length_scale = np.array([1])
         self.keys = keys
@@ -25,7 +38,40 @@ class DiscreteSPSpace:
 
         self.map[0,:] = k_to_vector(phase0)
        
-        if optimal_phis:
+        if orthog_tol is not None:
+            '''
+            Added by Jeff Orchard, March 2026
+            Use QR to get an orthogonal set of vectors.
+            It iteratively:
+            - computes the QR factorization of the vectors, and
+            - makes them unit-modulus
+            It has to iterate because the effect of making them unit-modulus
+            interferes with the orthgonality. 3 iterations seems to do the trick.
+            '''
+            A = self.map.T  # (vec_dim) x (num_vectors)
+            cross_sims = np.sum(A.T @ A) / ssp_dim - 1.
+            counter= 0  # loop counter
+            while abs(cross_sims)>orthog_tol and counter<3:
+                counter += 1
+
+                Q, _ = np.linalg.qr(A, mode='reduced')
+
+                u = fft(Q, axis=0)  # DFT of columns
+                u /= abs(u)   # make each Fourier coef unit-modulus
+
+                Q2 = np.real(ifft(u, axis=0))  # back to pseudo-spatial vectors
+
+                # Reverse any 'negative' vectors
+                for k in range(Q2.shape[1]):
+                    if Q2[:,k].T @ Q2[:,k] < 0:
+                        Q2[:,k] *= -1.
+
+                A = Q2
+                cross_sims = np.sum(A.T @ A) / ssp_dim - 1.
+
+            self.map = A.T
+
+        elif optimal_phis:
             def greedy_min_func(x, vecs):
                 K = x.reshape((1,vecs.shape[1]//2 - 1))
                 phi = k_to_vector(K)    

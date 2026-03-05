@@ -38,40 +38,7 @@ class DiscreteSPSpace:
 
         self.map[0,:] = k_to_vector(phase0)
        
-        if orthog_tol is not None:
-            '''
-            Added by Jeff Orchard, March 2026
-            Use QR to get an orthogonal set of vectors.
-            It iteratively:
-            - computes the QR factorization of the vectors, and
-            - makes them unit-modulus
-            It has to iterate because the effect of making them unit-modulus
-            interferes with the orthgonality. 3 iterations seems to do the trick.
-            '''
-            A = self.map.T  # (vec_dim) x (num_vectors)
-            cross_sims = np.sum(A.T @ A) / ssp_dim - 1.
-            counter= 0  # loop counter
-            while abs(cross_sims)>orthog_tol and counter<3:
-                counter += 1
-
-                Q, _ = np.linalg.qr(A, mode='reduced')
-
-                u = fft(Q, axis=0)  # DFT of columns
-                u /= abs(u)   # make each Fourier coef unit-modulus
-
-                Q2 = np.real(ifft(u, axis=0))  # back to pseudo-spatial vectors
-
-                # Reverse any 'negative' vectors
-                for k in range(Q2.shape[1]):
-                    if Q2[:,k].T @ Q2[:,k] < 0:
-                        Q2[:,k] *= -1.
-
-                A = Q2
-                cross_sims = np.sum(A.T @ A) / ssp_dim - 1.
-
-            self.map = A.T
-
-        elif optimal_phis:
+        if optimal_phis:
             def greedy_min_func(x, vecs):
                 K = x.reshape((1,vecs.shape[1]//2 - 1))
                 phi = k_to_vector(K)    
@@ -79,20 +46,56 @@ class DiscreteSPSpace:
                 return np.linalg.norm(sims)
 
             from scipy.optimize import minimize
-       
+        
             for i in range(1,len(self.keys)):
                 x0 = np.random.uniform(low=-np.pi, 
-                                       high=np.pi, 
-                                       size=((self.ssp_dim -2)// 2,))
+                                        high=np.pi, 
+                                        size=((self.ssp_dim -2)// 2,))
                 greedy_soln = minimize(greedy_min_func, x0, 
-                                       args=(self.map[:i,:]), 
-                                       method='L-BFGS-B')
+                                        args=(self.map[:i,:]), 
+                                        method='L-BFGS-B')
                 self.map[i,:] = k_to_vector(greedy_soln.x.reshape((1,(self.ssp_dim-2)//2)))
         else:
             for i in range(1, len(self.keys)):
                 phase0 = np.random.uniform(low=-np.pi, high=np.pi, 
-                                   size=(1, (self.ssp_dim-2)//2))
+                                    size=(1, (self.ssp_dim-2)//2))
                 self.map[i,:] = k_to_vector(phase0)
+
+    def make_map_orthog(self, tol=1e-2):
+        '''
+        Added by Jeff Orchard, March 2026
+        Use QR to get an orthogonal set of vectors.
+        It iteratively:
+        - computes the QR factorization of the vectors, and
+        - makes them unit-modulus
+        It has to iterate because the effect of making them unit-modulus
+        interferes with the orthgonality. 3 iterations seems to do the trick.
+        '''
+        A = self.map.T  # make it (vec_dim) x (num_vectors)
+        num_vectors = A.shape[1]
+        cross_sims = np.sum(A.T @ A) / num_vectors - 1.
+        print(f'cross-term similarities = {cross_sims}')
+        counter = 0  # loop counter
+        while abs(cross_sims)>tol and counter<3:
+            counter += 1
+
+            Q, _ = np.linalg.qr(A, mode='reduced')
+
+            u = fft(Q, axis=0)  # DFT of columns
+            u /= abs(u)   # make each Fourier coef unit-modulus
+
+            Q2 = np.real(ifft(u, axis=0))  # back to pseudo-spatial vectors
+
+            # Reverse any 'negative' vectors
+            for k in range(Q2.shape[1]):
+                if Q2[:,k].T @ Q2[:,k] < 0:
+                    Q2[:,k] *= -1.
+
+            A = Q2
+            cross_sims = np.sum(A.T @ A) / num_vectors - 1.
+            print(f'cross-term similarities = {cross_sims}')
+
+        self.map = A.T
     ### end __init__
 
 

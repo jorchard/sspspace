@@ -61,7 +61,7 @@ class DiscreteSPSpace:
                                     size=(1, (self.ssp_dim-2)//2))
                 self.map[i,:] = k_to_vector(phase0)
 
-    def make_map_orthog(self, tol=1e-2):
+    def make_vectors_orthog(self, tol=1e-2):
         '''
         Added by Jeff Orchard, March 2026
         Use QR to get an orthogonal set of vectors.
